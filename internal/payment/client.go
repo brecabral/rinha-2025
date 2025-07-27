@@ -6,21 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+
+	"github.com/brecabral/rinha-2025/internal/domain"
 )
 
 type PaymentClient struct {
-	Client *http.Client
+	Client  *http.Client
 	BaseUrl string
 }
 
-type PaymentRequest struct{
-    CorrelationID string    `json:"correlationId"`
-    Amount        float64   `json:"amount"`
-    RequestedAt   time.Time `json:"requestedAt"`
-}
-
-func (p *PaymentClient) PostPayment(ctx context.Context, reqBody PaymentRequest) error {
+func (p *PaymentClient) PostPayment(ctx context.Context, reqBody domain.ExternalPaymentRequest) error {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return err
@@ -34,24 +29,19 @@ func (p *PaymentClient) PostPayment(ctx context.Context, reqBody PaymentRequest)
 
 	req.Header.Set("Content-Type", "application/json")
 	res, err := p.Client.Do(req)
-    if err != nil {
-        return err
-    }
-    defer res.Body.Close()
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
 
-    if res.StatusCode >= 200 && res.StatusCode < 300 {
-        return nil
-    }
+	if res.StatusCode >= 200 && res.StatusCode < 300 {
+		return nil
+	}
 
-    return fmt.Errorf("erro no pagamento: status %d", res.StatusCode)
+	return fmt.Errorf("erro no pagamento: status %d", res.StatusCode)
 }
 
-type PaymentHealthResponse struct {
-	Failing         bool `json:"failing"`
-	MinResponseTime int  `json:"minResponseTime"`
-}
-
-func (p *PaymentClient) GetPaymentHealth(ctx context.Context) (*PaymentHealthResponse, error){
+func (p *PaymentClient) GetPaymentHealth(ctx context.Context) (*domain.ExternalPaymentHealthResponse, error) {
 	url := p.BaseUrl + "/payments/service-health"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -64,7 +54,7 @@ func (p *PaymentClient) GetPaymentHealth(ctx context.Context) (*PaymentHealthRes
 	}
 	defer res.Body.Close()
 
-	var health PaymentHealthResponse
+	var health domain.ExternalPaymentHealthResponse
 	if err := json.NewDecoder(res.Body).Decode(&health); err != nil {
 		return nil, err
 	}
