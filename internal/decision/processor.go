@@ -19,3 +19,7 @@ var fallbackPaymentClient = payment.PaymentClient{
 	Client:  &http.Client{},
 	BaseUrl: urlFallbackPayment,
 }
+
+func Decider() payment.PaymentClient {
+	return defaultPaymentClient
+}
