@@ -11,8 +11,9 @@ import (
 )
 
 type PaymentClient struct {
-	Client  *http.Client
-	BaseUrl string
+	Client           *http.Client
+	BaseUrl          string
+	DefaultProcessor bool
 }
 
 func (p *PaymentClient) PostPayment(ctx context.Context, reqBody domain.ExternalPaymentRequest) error {

@@ -9,15 +9,17 @@ import (
 const urlDefaultPayment = "http://payment-processor-default:8080"
 
 var defaultPaymentClient = payment.PaymentClient{
-	Client:  &http.Client{},
-	BaseUrl: urlDefaultPayment,
+	Client:           &http.Client{},
+	BaseUrl:          urlDefaultPayment,
+	DefaultProcessor: true,
 }
 
 const urlFallbackPayment = "http://payment-processor-fallback:8080"
 
 var fallbackPaymentClient = payment.PaymentClient{
-	Client:  &http.Client{},
-	BaseUrl: urlFallbackPayment,
+	Client:           &http.Client{},
+	BaseUrl:          urlFallbackPayment,
+	DefaultProcessor: false,
 }
 
 func Decider() payment.PaymentClient {
