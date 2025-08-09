@@ -1,10 +1,10 @@
-package store
+package database
 
 import (
 	"database/sql"
 	"time"
 
-	"github.com/brecabral/rinha-2025/internal/domain"
+	"github.com/brecabral/rinha-2025/internal/dto"
 )
 
 const insertTransactionDefault = `INSERT INTO transactionsDefault(id, amount)
@@ -89,7 +89,7 @@ func NewDatabase(client *sql.DB) (*Database, error) {
 	}, nil
 }
 
-func (d *Database) SaveTransaction(data domain.PaymentRequest, defaultProcessor bool) error {
+func (d *Database) SaveTransaction(data dto.PaymentRequest, defaultProcessor bool) error {
 	var err error
 	if defaultProcessor {
 		_, err = d.DefaultTable.InsertStmt.Exec(data.CorrelationID, data.Amount)
@@ -99,9 +99,9 @@ func (d *Database) SaveTransaction(data domain.PaymentRequest, defaultProcessor 
 	return err
 }
 
-func (d *Database) ReadAllTransactions() (*domain.PaymentsSummaryResponse, error) {
+func (d *Database) ReadAllTransactions() (*dto.PaymentsSummaryResponse, error) {
 	row := d.DefaultTable.SelectTotalStmt.QueryRow()
-	var summaryDefault domain.PaymentSummary
+	var summaryDefault dto.PaymentSummary
 
 	err := row.Scan(&summaryDefault.TotalRequests, &summaryDefault.TotalAmount)
 	if err != nil {
@@ -109,22 +109,22 @@ func (d *Database) ReadAllTransactions() (*domain.PaymentsSummaryResponse, error
 	}
 
 	row = d.FallbackTable.SelectTotalStmt.QueryRow()
-	var summaryFallback domain.PaymentSummary
+	var summaryFallback dto.PaymentSummary
 
 	err = row.Scan(&summaryFallback.TotalRequests, &summaryFallback.TotalAmount)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domain.PaymentsSummaryResponse{
+	return &dto.PaymentsSummaryResponse{
 		DefaultProcessor:  summaryDefault,
 		FallbackProcessor: summaryFallback,
 	}, nil
 }
 
-func (d *Database) ReadTransactionsOnPeriod(from time.Time, to time.Time) (*domain.PaymentsSummaryResponse, error) {
+func (d *Database) ReadTransactionsOnPeriod(from time.Time, to time.Time) (*dto.PaymentsSummaryResponse, error) {
 	row := d.DefaultTable.SelectPeriodStmt.QueryRow(from, to)
-	var summaryDefault domain.PaymentSummary
+	var summaryDefault dto.PaymentSummary
 
 	err := row.Scan(&summaryDefault.TotalRequests, &summaryDefault.TotalAmount)
 	if err != nil {
@@ -132,14 +132,14 @@ func (d *Database) ReadTransactionsOnPeriod(from time.Time, to time.Time) (*doma
 	}
 
 	row = d.FallbackTable.SelectPeriodStmt.QueryRow(from, to)
-	var summaryFallback domain.PaymentSummary
+	var summaryFallback dto.PaymentSummary
 
 	err = row.Scan(&summaryFallback.TotalRequests, &summaryFallback.TotalAmount)
 	if err != nil {
 		return nil, err
 	}
 
-	return &domain.PaymentsSummaryResponse{
+	return &dto.PaymentsSummaryResponse{
 		DefaultProcessor:  summaryDefault,
 		FallbackProcessor: summaryFallback,
 	}, nil

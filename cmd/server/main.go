@@ -9,8 +9,8 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/brecabral/rinha-2025/internal/decision"
-	"github.com/brecabral/rinha-2025/internal/handle"
-	"github.com/brecabral/rinha-2025/internal/store"
+	"github.com/brecabral/rinha-2025/internal/infra/database"
+	"github.com/brecabral/rinha-2025/internal/infra/webserver/handlers"
 )
 
 func main() {
@@ -21,17 +21,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("[ERROR] Não foi possivel se conectar ao banco de dados: %v", err)
 	}
-	dbClient, err := store.NewDatabase(db)
+	dbClient, err := database.NewDatabase(db)
 	if err != nil {
 		log.Fatalf("[ERROR] Não foi possivel criar uma conexão com o banco de dados: %v", err)
 	}
 	defer dbClient.Close()
-	h := handle.Handler{
-		Processor:      &processor,
-		DatabaseClient: dbClient,
-	}
-	http.HandleFunc("/payments", h.PaymentsHandler)
-	http.HandleFunc("/payments-summary", h.PaymentsSummaryHandler)
+	h := handlers.NewPaymentsHandler(
+		processor,
+		dbClient,
+	)
+	http.HandleFunc("/payments", h.ProcessorPayment)
+	http.HandleFunc("/payments-summary", h.RequestSummary)
 	log.Print("[INFO] Servidor ouvindo...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

@@ -1,4 +1,4 @@
-package handle
+package handlers
 
 import (
 	"context"
@@ -8,17 +8,24 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/brecabral/rinha-2025/internal/domain"
-	"github.com/brecabral/rinha-2025/internal/payment"
-	"github.com/brecabral/rinha-2025/internal/store"
+	"github.com/brecabral/rinha-2025/internal/dto"
+	"github.com/brecabral/rinha-2025/internal/entity"
+	"github.com/brecabral/rinha-2025/internal/infra/database"
 )
 
-type Handler struct {
-	Processor      *payment.PaymentClient
-	DatabaseClient *store.Database
+type PaymentsHandler struct {
+	Processor      *entity.ProcessorClient
+	DatabaseClient *database.Database
 }
 
-func (h *Handler) PaymentsHandler(w http.ResponseWriter, r *http.Request) {
+func NewPaymentsHandler(processor *entity.ProcessorClient, databaseClient *database.Database) *PaymentsHandler {
+	return &PaymentsHandler{
+		Processor:      processor,
+		DatabaseClient: databaseClient,
+	}
+}
+
+func (h *PaymentsHandler) ProcessorPayment(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -31,7 +38,7 @@ func (h *Handler) PaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	var data domain.PaymentRequest
+	var data dto.PaymentRequest
 	if err := json.Unmarshal(requestBody, &data); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -40,7 +47,7 @@ func (h *Handler) PaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	body := domain.ExternalPaymentRequest{
+	body := dto.ProcessorPaymentRequest{
 		CorrelationID: data.CorrelationID,
 		Amount:        data.Amount,
 		RequestedAt:   time.Now(),
@@ -58,7 +65,7 @@ func (h *Handler) PaymentsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("CorrelationID: %s, Amount: %f", data.CorrelationID, data.Amount)
 }
 
-func (h *Handler) PaymentsSummaryHandler(w http.ResponseWriter, r *http.Request) {
+func (h *PaymentsHandler) RequestSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -69,7 +76,7 @@ func (h *Handler) PaymentsSummaryHandler(w http.ResponseWriter, r *http.Request)
 	from := query.Get("from")
 	to := query.Get("to")
 
-	var summary *domain.PaymentsSummaryResponse
+	var summary *dto.PaymentsSummaryResponse
 	var err error
 
 	if (from != "") && (to != "") {
