@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,16 +9,19 @@ import (
 	"github.com/brecabral/rinha-2025/internal/decision"
 	"github.com/brecabral/rinha-2025/internal/dto"
 	"github.com/brecabral/rinha-2025/internal/infra/database"
+	"github.com/brecabral/rinha-2025/internal/infra/workers"
 )
 
 type PaymentsHandler struct {
 	ProcessorDecider *decision.Decider
+	PaymentsWP       *workers.WorkerPool
 	PaymentsDB       *database.Database
 }
 
-func NewPaymentsHandler(processorDecider *decision.Decider, db *database.Database) *PaymentsHandler {
+func NewPaymentsHandler(decider *decision.Decider, wp *workers.WorkerPool, db *database.Database) *PaymentsHandler {
 	return &PaymentsHandler{
-		ProcessorDecider: processorDecider,
+		ProcessorDecider: decider,
+		PaymentsWP:       wp,
 		PaymentsDB:       db,
 	}
 }
@@ -37,28 +39,20 @@ func (h *PaymentsHandler) ProcessorPayment(w http.ResponseWriter, r *http.Reques
 	}
 	defer r.Body.Close()
 
-	var data dto.PaymentRequest
-	if err := json.Unmarshal(requestBody, &data); err != nil {
+	var req dto.PaymentRequest
+	if err := json.Unmarshal(requestBody, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	defer cancel()
-
-	body := dto.ProcessorPaymentRequest{
-		CorrelationID: data.CorrelationID,
-		Amount:        data.Amount,
+	data := dto.ProcessorPaymentRequest{
+		CorrelationID: req.CorrelationID,
+		Amount:        req.Amount,
 		RequestedAt:   time.Now(),
 	}
 
-	if err := h.ProcessorDecider.Processor.PostPayment(ctx, body); err != nil {
-		h.ProcessorDecider.Processor.Failing = true
-		h.ProcessorDecider.Chose()
-		return
-	}
-
-	h.PaymentsDB.SaveTransaction(data, h.ProcessorDecider.Processor.DefaultProcessor)
+	task := workers.NewPaymentTask(data, h.ProcessorDecider, h.PaymentsDB)
+	h.PaymentsWP.Submit(task)
 
 	w.WriteHeader(http.StatusOK)
 }

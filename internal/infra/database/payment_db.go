@@ -7,8 +7,8 @@ import (
 	"github.com/brecabral/rinha-2025/internal/dto"
 )
 
-const insertTransactionDefault = `INSERT INTO transactionsDefault(id, amount)
-								 VALUES ($1, $2);`
+const insertTransactionDefault = `INSERT INTO transactionsDefault(id, amount, created_at)
+								 VALUES ($1, $2, $3);`
 
 const selectTotalDefault = `SELECT count(*), COALESCE(sum(amount), 0) 
 							FROM transactionsDefault;`
@@ -17,8 +17,8 @@ const selectPeriodDefault = `SELECT count(*), COALESCE(sum(amount), 0)
 							FROM transactionsDefault 
 							WHERE created_at BETWEEN $1 AND $2;`
 
-const insertTransactionFallback = `INSERT INTO transactionsFallback(id, amount)
-								 VALUES ($1, $2);`
+const insertTransactionFallback = `INSERT INTO transactionsFallback(id, amount, created_at)
+								 VALUES ($1, $2, $3);`
 
 const selectTotalFallback = `SELECT count(*), COALESCE(sum(amount), 0) 
 							FROM transactionsFallback;`
@@ -89,12 +89,12 @@ func NewDatabase(client *sql.DB) (*Database, error) {
 	}, nil
 }
 
-func (d *Database) SaveTransaction(data dto.PaymentRequest, defaultProcessor bool) error {
+func (d *Database) SaveTransaction(data dto.ProcessorPaymentRequest, defaultProcessor bool) error {
 	var err error
 	if defaultProcessor {
-		_, err = d.DefaultTable.InsertStmt.Exec(data.CorrelationID, data.Amount)
+		_, err = d.DefaultTable.InsertStmt.Exec(data.CorrelationID, data.Amount, data.RequestedAt)
 	} else {
-		_, err = d.FallbackTable.InsertStmt.Exec(data.CorrelationID, data.Amount)
+		_, err = d.FallbackTable.InsertStmt.Exec(data.CorrelationID, data.Amount, data.RequestedAt)
 	}
 	return err
 }

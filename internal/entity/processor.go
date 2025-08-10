@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/brecabral/rinha-2025/internal/dto"
 )
@@ -28,12 +29,14 @@ func NewProcessorClient(webClient *http.Client, baseUrl string, defaultProcessor
 	}
 }
 
-func (p *ProcessorClient) PostPayment(ctx context.Context, reqBody dto.ProcessorPaymentRequest) error {
+func (p *ProcessorClient) PostPayment(reqBody dto.ProcessorPaymentRequest) error {
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return err
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
 	url := p.BaseUrl + "/payments"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
