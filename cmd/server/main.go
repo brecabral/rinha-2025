@@ -14,7 +14,6 @@ import (
 )
 
 func main() {
-	processor := decision.Decider()
 	connStr := "host=db user=rinha password=rinha dbname=rinha sslmode=disable"
 	time.Sleep(5 * time.Second)
 	db, err := sql.Open("postgres", connStr)
@@ -26,8 +25,19 @@ func main() {
 		log.Fatalf("[ERROR] Não foi possivel criar uma conexão com o banco de dados: %v", err)
 	}
 	defer dbClient.Close()
+	decider := decision.NewDecider()
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			<-ticker.C
+			decider.CheckProcessors()
+			decider.Chose()
+		}
+	}()
 	h := handlers.NewPaymentsHandler(
-		processor,
+		decider,
 		dbClient,
 	)
 	http.HandleFunc("/payments", h.ProcessorPayment)

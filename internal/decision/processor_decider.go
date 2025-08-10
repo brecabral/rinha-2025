@@ -1,27 +1,65 @@
 package decision
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/brecabral/rinha-2025/internal/entity"
 )
 
-const urlDefaultPayment = "http://payment-processor-default:8080"
+const urlDefaultProcessor = "http://payment-processor-default:8080"
 
-var defaultPaymentClient = entity.NewProcessorClient(
+var defaultProcessorClient = entity.NewProcessorClient(
 	&http.Client{},
-	urlDefaultPayment,
+	urlDefaultProcessor,
 	true,
 )
 
-const urlFallbackPayment = "http://payment-processor-fallback:8080"
+const urlFallbackProcessor = "http://payment-processor-fallback:8080"
 
-var fallbackPaymentClient = entity.NewProcessorClient(
+var fallbackProcessorClient = entity.NewProcessorClient(
 	&http.Client{},
-	urlFallbackPayment,
+	urlFallbackProcessor,
 	false,
 )
 
-func Decider() *entity.ProcessorClient {
-	return defaultPaymentClient
+type Decider struct {
+	Processor *entity.ProcessorClient
+}
+
+func NewDecider() *Decider {
+	return &Decider{
+		Processor: defaultProcessorClient,
+	}
+}
+
+func (d *Decider) Chose() {
+	if defaultProcessorClient.Failing && fallbackProcessorClient.Failing {
+		<-time.After(100 * time.Millisecond)
+		d.Chose()
+		return
+	} else if defaultProcessorClient.Failing {
+		d.Processor = fallbackProcessorClient
+	} else if fallbackProcessorClient.Failing {
+		d.Processor = defaultProcessorClient
+	}
+}
+
+func (d *Decider) CheckProcessors() {
+	checkProcessorHealth(defaultProcessorClient)
+	checkProcessorHealth(fallbackProcessorClient)
+}
+
+func checkProcessorHealth(processorClient *entity.ProcessorClient) {
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	health, err := processorClient.GetPaymentHealth(ctx)
+	if err != nil {
+		processorClient.Failing = true
+		processorClient.MinResponseTime = 1000
+	} else {
+		processorClient.Failing = health.Failing
+		processorClient.MinResponseTime = health.MinResponseTime
+	}
 }

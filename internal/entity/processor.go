@@ -14,6 +14,8 @@ type ProcessorClient struct {
 	WebClient        *http.Client
 	BaseUrl          string
 	DefaultProcessor bool
+	Failing          bool
+	MinResponseTime  int
 }
 
 func NewProcessorClient(webClient *http.Client, baseUrl string, defaultProcessor bool) *ProcessorClient {
@@ -21,6 +23,8 @@ func NewProcessorClient(webClient *http.Client, baseUrl string, defaultProcessor
 		WebClient:        webClient,
 		BaseUrl:          baseUrl,
 		DefaultProcessor: defaultProcessor,
+		Failing:          false,
+		MinResponseTime:  0,
 	}
 }
 
