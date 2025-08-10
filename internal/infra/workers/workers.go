@@ -1,6 +1,8 @@
 package workers
 
-import "sync"
+import (
+	"sync"
+)
 
 type WorkerPool struct {
 	tasksChan chan Task
@@ -21,11 +23,12 @@ func (wp *WorkerPool) worker() {
 	for task := range wp.tasksChan {
 		payment, ok := task.(*PaymentTask)
 		work := task.Process()
-		if work && ok {
-			wp.Submit(NewDatabaseTask(payment.Data, payment.ProcessorDecider, payment.PaymentsDB))
-		}
-		if !work {
-			wp.Submit(task)
+		if ok {
+			if work == nil {
+				wp.Submit(NewDatabaseTask(payment))
+			} else if work.Error() == "retry" {
+				wp.Submit(task)
+			}
 		}
 		wp.wg.Done()
 	}

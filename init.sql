@@ -1,15 +1,8 @@
-DROP TABLE IF EXISTS transactionsDefault;
+DROP TABLE IF EXISTS transactions;
 
-CREATE TABLE transactionsDefault (
-  id UUID PRIMARY KEY,
-  amount FLOAT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-DROP TABLE IF EXISTS transactionsFallback;
-
-CREATE TABLE transactionsFallback (
-  id UUID PRIMARY KEY,
-  amount FLOAT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE transactions (
+    id UUID PRIMARY KEY,
+    amount NUMERIC NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL,
+    processor_type TEXT CHECK (processor_type IN ('default', 'fallback'))
 );

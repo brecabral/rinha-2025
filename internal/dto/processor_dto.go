@@ -9,6 +9,6 @@ type ProcessorPaymentRequest struct {
 }
 
 type ProcessorHealthResponse struct {
-	Failing         bool `json:"failing"`
-	MinResponseTime int  `json:"minResponseTime"`
+	Failing         bool          `json:"failing"`
+	MinResponseTime time.Duration `json:"minResponseTime"`
 }
