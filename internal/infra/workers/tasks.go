@@ -1,10 +1,13 @@
 package workers
 
 import (
+	"context"
+
 	"time"
 
 	"github.com/brecabral/rinha-2025/internal/decision"
 	"github.com/brecabral/rinha-2025/internal/dto"
+	"github.com/brecabral/rinha-2025/internal/infra/clients"
 	"github.com/brecabral/rinha-2025/internal/infra/database"
 )
 
@@ -40,12 +43,23 @@ func (t *PaymentTask) Process() error {
 		Amount:        t.Data.Amount,
 		RequestedAt:   t.Data.RequestedAt,
 	}
-	processor := t.ProcessorDecider.ChooseProcessor()
-	t.DefaultProcessor = processor.DefaultProcessor
-	err := processor.PostPayment(req)
+	var (
+		err       error
+		processor *clients.ProcessorClient
+	)
+
+	processor = t.ProcessorDecider.ChooseProcessor()
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	err = processor.PostPayment(ctx, req)
 	if err != nil {
-		t.ProcessorDecider.UpdateProcessorHealth(processor.DefaultProcessor, true, 500)
+		t.ProcessorDecider.UpdateProcessorFailing(processor.DefaultProcessor, true)
+		<-time.Tick(100 * time.Millisecond)
+		processor = t.ProcessorDecider.ChooseProcessor()
+		err = processor.PostPayment(ctx, req)
 	}
+
+	t.DefaultProcessor = processor.DefaultProcessor
 	return err
 }
 

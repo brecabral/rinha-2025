@@ -4,55 +4,78 @@ import (
 	"sync"
 	"time"
 
+	"github.com/brecabral/rinha-2025/internal/infra/cache"
 	"github.com/brecabral/rinha-2025/internal/infra/clients"
 )
 
+const defaultProcessor = true
+const fallbackProcessor = false
+
 type Decider struct {
-	defaultProcessor  *clients.ProcessorClient
-	fallbackProcessor *clients.ProcessorClient
-	mu                sync.RWMutex
+	defaultProcessorClient  *clients.ProcessorClient
+	fallbackProcessorClient *clients.ProcessorClient
+	processorStatus         *cache.ProcessorsCache
+	mu                      sync.RWMutex
 }
 
-func NewDecider(dp *clients.ProcessorClient, fp *clients.ProcessorClient) *Decider {
+func NewDecider(dp *clients.ProcessorClient, fp *clients.ProcessorClient, ps *cache.ProcessorsCache) *Decider {
 	return &Decider{
-		defaultProcessor:  dp,
-		fallbackProcessor: fp,
+		defaultProcessorClient:  dp,
+		fallbackProcessorClient: fp,
+		processorStatus:         ps,
 	}
 }
 
 func (d *Decider) ChooseProcessor() *clients.ProcessorClient {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	if d.fallbackProcessor.Failing {
-		return d.defaultProcessor
+
+	defaultProcessorFailing, err := d.processorStatus.GetProcessorFailing(defaultProcessor)
+	if err != nil {
+		d.processorStatus.SetProcessorFailingTrue(defaultProcessor)
 	}
-	if d.defaultProcessor.Failing {
-		return d.fallbackProcessor
+	fallbackProcessorFailing, err := d.processorStatus.GetProcessorFailing(fallbackProcessor)
+	if err != nil {
+		d.processorStatus.SetProcessorFailingTrue(fallbackProcessor)
 	}
-	if d.defaultProcessor.MinResponseTime > 100 && d.defaultProcessor.MinResponseTime > d.fallbackProcessor.MinResponseTime {
-		return d.fallbackProcessor
+
+	for defaultProcessorFailing && fallbackProcessorFailing {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		<-ticker.C
+		defaultProcessorFailing, _ = d.processorStatus.GetProcessorFailing(defaultProcessor)
+		fallbackProcessorFailing, _ = d.processorStatus.GetProcessorFailing(fallbackProcessor)
 	}
-	return d.defaultProcessor
+
+	if !defaultProcessorFailing {
+
+		return d.defaultProcessorClient
+	}
+	return d.fallbackProcessorClient
 }
 
-func (d *Decider) UpdateProcessorHealth(defaultProcessor bool, failing bool, minResponseTime time.Duration) {
+func (d *Decider) UpdateProcessorFailing(defaultProcessor bool, failing bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var processor *clients.ProcessorClient
-	if defaultProcessor {
-		processor = d.defaultProcessor
-	} else {
-		processor = d.fallbackProcessor
-	}
-	processor.Failing = failing
-	processor.MinResponseTime = minResponseTime
+	d.processorStatus.SetProcessorFailing(defaultProcessor, failing)
 }
 
 func (d *Decider) CheckProcessorsHealth() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.defaultProcessor.UpdateProcessorHealth()
-	d.fallbackProcessor.UpdateProcessorHealth()
+
+	defaultHealth, err := d.defaultProcessorClient.GetProcessorHealth()
+	if err != nil {
+		d.processorStatus.SetProcessorFailingTrue(defaultProcessor)
+	} else {
+		d.processorStatus.SetProcessorFailing(defaultProcessor, defaultHealth.Failing)
+	}
+
+	fallbackHealth, err := d.fallbackProcessorClient.GetProcessorHealth()
+	if err != nil {
+		d.processorStatus.SetProcessorFailingTrue(fallbackProcessor)
+	} else {
+		d.processorStatus.SetProcessorFailing(fallbackProcessor, fallbackHealth.Failing)
+	}
 }
 
 func (d *Decider) StartHealthCheck() {

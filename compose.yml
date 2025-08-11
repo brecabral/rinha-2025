@@ -7,7 +7,10 @@ services:
     expose:
       - "8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - backend
       - payment-processor
@@ -25,7 +28,10 @@ services:
     expose:
       - "8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - backend
       - payment-processor
@@ -66,11 +72,34 @@ services:
       POSTGRES_PASSWORD: rinha
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rinha"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: "220MB"
+          cpus: "0.20"
+          memory: "200MB"
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    expose:
+      - "6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: "20MB"
 
 
 networks:
