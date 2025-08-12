@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"time"
-
-	"github.com/brecabral/rinha-2025/internal/dto"
 )
 
 const insertTransaction = `INSERT INTO 
@@ -60,8 +58,8 @@ func prepareStmts(db *sql.DB) (*stmtsTransactions, error) {
 }
 
 type Transactions struct {
-	DB    *sql.DB
-	stmts *stmtsTransactions
+	database *sql.DB
+	stmts    *stmtsTransactions
 }
 
 func NewTransactionsDB(db *sql.DB) (*Transactions, error) {
@@ -71,22 +69,32 @@ func NewTransactionsDB(db *sql.DB) (*Transactions, error) {
 	}
 
 	return &Transactions{
-		DB:    db,
-		stmts: preparedStmts,
+		database: db,
+		stmts:    preparedStmts,
 	}, nil
 }
 
-func (t *Transactions) SaveTransaction(data dto.DatabaseSaveTransaction) error {
-	processorType := "default"
-	if !data.ProcessorDefault {
-		processorType = "fallback"
+func (t *Transactions) SaveTransaction(id string, amount float64, requestedAt time.Time, isDefault bool) error {
+	processorType := "fallback"
+	if isDefault {
+		processorType = "default"
 	}
-	_, err := t.stmts.insertTransactionStmt.Exec(data.ID, data.Amount, data.RequestedAt, processorType)
+	_, err := t.stmts.insertTransactionStmt.Exec(id, amount, requestedAt, processorType)
 	return err
 }
 
-func readTransactions(rows *sql.Rows) dto.DatabaseReadTransactions {
-	var data dto.DatabaseReadTransactions
+type TransactionsSummaryByProcessor struct {
+	TotalRequests int
+	TotalAmount   float64
+}
+
+type TransactionsSummary struct {
+	DefaultProcessor  TransactionsSummaryByProcessor
+	FallbackProcessor TransactionsSummaryByProcessor
+}
+
+func readRows(rows *sql.Rows) TransactionsSummary {
+	var summary TransactionsSummary
 	for rows.Next() {
 		var (
 			processorType string
@@ -96,42 +104,42 @@ func readTransactions(rows *sql.Rows) dto.DatabaseReadTransactions {
 		rows.Scan(&processorType, &totalRequests, &totalAmount)
 		switch processorType {
 		case "default":
-			data.DefaultProcessor.TotalRequests = totalRequests
-			data.DefaultProcessor.TotalAmount = totalAmount
+			summary.DefaultProcessor.TotalRequests = totalRequests
+			summary.DefaultProcessor.TotalAmount = totalAmount
 		case "fallback":
-			data.FallbackProcessor.TotalRequests = totalRequests
-			data.FallbackProcessor.TotalAmount = totalAmount
+			summary.FallbackProcessor.TotalRequests = totalRequests
+			summary.FallbackProcessor.TotalAmount = totalAmount
 		}
 	}
-	return data
+	return summary
 }
 
-func (t *Transactions) ReadAllTransactions() (dto.DatabaseReadTransactions, error) {
-	var data dto.DatabaseReadTransactions
+func (t *Transactions) ReadAllTransactions() (TransactionsSummary, error) {
+	var summary TransactionsSummary
 	rows, err := t.stmts.selectAllTransactionsStmt.Query()
 	if err != nil {
-		return data, err
+		return summary, err
 	}
 	defer rows.Close()
-	data = readTransactions(rows)
-	return data, nil
+	summary = readRows(rows)
+	return summary, nil
 }
 
-func (t *Transactions) ReadTransactionsOnPeriod(from time.Time, to time.Time) (dto.DatabaseReadTransactions, error) {
-	var data dto.DatabaseReadTransactions
+func (t *Transactions) ReadTransactionsOnPeriod(from time.Time, to time.Time) (TransactionsSummary, error) {
+	var summary TransactionsSummary
 	rows, err := t.stmts.selectTransactionOnPeriodStmt.Query(from, to)
 	if err != nil {
-		return data, err
+		return summary, err
 	}
 	defer rows.Close()
-	data = readTransactions(rows)
-	return data, nil
+	summary = readRows(rows)
+	return summary, nil
 }
 
 func (t *Transactions) Close() error {
 	errInsert := t.stmts.insertTransactionStmt.Close()
 	errSelectAll := t.stmts.selectAllTransactionsStmt.Close()
 	errSelectPeriod := t.stmts.selectTransactionOnPeriodStmt.Close()
-	errDB := t.DB.Close()
+	errDB := t.database.Close()
 	return errors.Join(errInsert, errSelectAll, errSelectPeriod, errDB)
 }

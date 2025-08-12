@@ -2,43 +2,72 @@ package workers
 
 import (
 	"sync"
+	"time"
+
+	"github.com/brecabral/rinha-2025/internal/infra/clients"
+	"github.com/brecabral/rinha-2025/internal/infra/database"
+	"github.com/brecabral/rinha-2025/internal/infra/queue"
 )
 
 type WorkerPool struct {
-	tasksChan chan Task
-	wg        sync.WaitGroup
+	tasksQueue        *queue.TasksQueue
+	transactionsDB    *database.Transactions
+	defaultProcessor  *clients.ProcessorClient
+	fallbackProcessor *clients.ProcessorClient
+	workers           int
+	stopChan          chan struct{}
+	wg                sync.WaitGroup
 }
 
-func NewWorkerPool(concurrency int) *WorkerPool {
+func NewWorkerPool(tq *queue.TasksQueue, db *database.Transactions, dp, fp *clients.ProcessorClient, w int) *WorkerPool {
 	wp := &WorkerPool{
-		tasksChan: make(chan Task, 100),
-	}
-	for i := 0; i < concurrency; i++ {
-		go wp.worker()
+		tasksQueue:        tq,
+		transactionsDB:    db,
+		defaultProcessor:  dp,
+		fallbackProcessor: fp,
+		workers:           w,
+		stopChan:          make(chan struct{}),
 	}
 	return wp
 }
 
-func (wp *WorkerPool) worker() {
-	for task := range wp.tasksChan {
-		payment, ok := task.(*PaymentTask)
-		work := task.Process()
-		if ok {
-			if work == nil {
-				wp.Submit(NewDatabaseTask(payment))
-			} else if work.Error() == "retry" {
-				wp.Submit(task)
-			}
-		}
-		wp.wg.Done()
+func (wp *WorkerPool) Start() {
+	for i := 0; i < wp.workers; i++ {
+		wp.wg.Add(1)
+		go wp.worker()
 	}
 }
 
-func (wp *WorkerPool) Submit(task Task) {
-	wp.wg.Add(1)
-	wp.tasksChan <- task
+func (wp *WorkerPool) worker() {
+	defer wp.wg.Done()
+	for {
+		select {
+		case <-wp.stopChan:
+			return
+		default:
+			taskInfo, err := wp.tasksQueue.Dequeue()
+			if err != nil {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+
+			task := NewPaymentTask(
+				taskInfo,
+				wp.defaultProcessor,
+				wp.fallbackProcessor,
+				wp.transactionsDB)
+			workDone := task.Process()
+			if !workDone {
+				wp.tasksQueue.Prepend(taskInfo)
+			}
+		}
+	}
 }
 
-func (wp *WorkerPool) Wait() {
+func (wp *WorkerPool) Stop() {
+	for i := 0; i < wp.workers; i++ {
+		wp.stopChan <- struct{}{}
+	}
 	wp.wg.Wait()
+	close(wp.stopChan)
 }

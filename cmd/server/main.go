@@ -5,66 +5,60 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/redis/go-redis/v9"
 
-	"github.com/brecabral/rinha-2025/internal/decision"
-	"github.com/brecabral/rinha-2025/internal/infra/cache"
 	"github.com/brecabral/rinha-2025/internal/infra/clients"
 	"github.com/brecabral/rinha-2025/internal/infra/database"
+	"github.com/brecabral/rinha-2025/internal/infra/queue"
 	"github.com/brecabral/rinha-2025/internal/infra/webserver/handlers"
 	"github.com/brecabral/rinha-2025/internal/infra/workers"
 )
 
 func main() {
-	processorDecider := CreateProcessorDecider()
-	wokerPool := CreateWorkerPool()
+	tasksQueue := CreateTasksQueue()
 	transactionsDB := CreateDBConection()
 	defer transactionsDB.Close()
 
+	workersCountStr := os.Getenv("WORKERS_COUNT")
+	workersCount, err := strconv.Atoi(workersCountStr)
+	if err != nil {
+		workersCount = 10
+	}
+
+	workerPool := CreateWorkerPool(tasksQueue, transactionsDB, workersCount)
+	workerPool.Start()
+	defer workerPool.Stop()
+
 	paymentsHandler := handlers.NewPaymentsHandler(
-		wokerPool,
+		tasksQueue,
 		transactionsDB,
-		processorDecider,
 	)
 
 	http.HandleFunc("/payments", paymentsHandler.ProcessorPayment)
 	http.HandleFunc("/payments-summary", paymentsHandler.RequestSummary)
+
 	log.Print("[INFO] Servidor ouvindo...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+
 }
 
-func CreateProcessorDecider() *decision.Decider {
-	const urlDefaultProcessor = "http://payment-processor-default:8080"
-	var defaultProcessorClient = clients.NewProcessorClient(
-		&http.Client{
-			Timeout: 300 * time.Millisecond,
-		},
-		urlDefaultProcessor,
-		true,
-	)
-
-	const urlFallbackProcessor = "http://payment-processor-fallback:8080"
-	var fallbackProcessorClient = clients.NewProcessorClient(
-		&http.Client{
-			Timeout: 200 * time.Millisecond,
-		},
-		urlFallbackProcessor,
-		false,
-	)
-
-	processorCache := cache.NewProcessorsCache()
+func CreateTasksQueue() *queue.TasksQueue {
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "redis:6379",
+		DB:   0,
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
-	err := processorCache.RedisClient.Ping(ctx).Err()
+	err := redisClient.Ping(ctx).Err()
 	if err != nil {
 		log.Fatalf("[ERROR] redis não responde")
 	}
-
-	processorDecider := decision.NewDecider(defaultProcessorClient, fallbackProcessorClient, processorCache)
-	go processorDecider.StartHealthCheck()
-	return processorDecider
+	return queue.NewTasksQueue(redisClient)
 }
 
 func CreateDBConection() *database.Transactions {
@@ -89,6 +83,19 @@ func CreateDBConection() *database.Transactions {
 	return dbClient
 }
 
-func CreateWorkerPool() *workers.WorkerPool {
-	return workers.NewWorkerPool(2)
+func CreateWorkerPool(tq *queue.TasksQueue, db *database.Transactions, w int) *workers.WorkerPool {
+	const urlDefaultProcessor = "http://payment-processor-default:8080"
+	var defaultProcessorClient = clients.NewProcessorClient(
+		&http.Client{},
+		urlDefaultProcessor,
+		true,
+	)
+
+	const urlFallbackProcessor = "http://payment-processor-fallback:8080"
+	var fallbackProcessorClient = clients.NewProcessorClient(
+		&http.Client{},
+		urlFallbackProcessor,
+		false,
+	)
+	return workers.NewWorkerPool(tq, db, defaultProcessorClient, fallbackProcessorClient, w)
 }

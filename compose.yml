@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: app1
+    environment:
+      - WORKERS_COUNT=10
     expose:
       - "8080"
     depends_on:
@@ -17,14 +19,16 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.55"
-          memory: "50MB"
+          cpus: "0.50"
+          memory: "85MB"
     
   app2:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: app2
+    environment:
+      - WORKERS_COUNT=10
     expose:
       - "8080"
     depends_on:
@@ -38,8 +42,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.55"
-          memory: "50MB"
+          cpus: "0.50"
+          memory: "85MB"
 
   nginx:
     image: nginx:alpine
@@ -56,8 +60,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.15"
-          memory: "30MB"
+          cpus: "0.10"
+          memory: "20MB"
 
   db:
     image: postgres:17-alpine
@@ -80,8 +84,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.20"
-          memory: "200MB"
+          cpus: "0.30"
+          memory: "145MB"
 
   redis:
     image: redis:7-alpine
@@ -98,8 +102,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.05"
-          memory: "20MB"
+          cpus: "0.10"
+          memory: "15MB"
 
 
 networks:
