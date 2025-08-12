@@ -1,8 +1,6 @@
 services:
   app1:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: brecabral/rinha-2025:latest
     container_name: app1
     environment:
       - WORKERS_COUNT=10
@@ -23,9 +21,7 @@ services:
           memory: "85MB"
     
   app2:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: brecabral/rinha-2025:latest
     container_name: app2
     environment:
       - WORKERS_COUNT=10
